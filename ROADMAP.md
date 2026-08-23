@@ -10,9 +10,10 @@
 
 ## Текущий фокус
 
-**Этап 0: закончить Windows → VS Code → Ubuntu и подключить Ubuntu-копию проекта к
-GitHub.** После этого собрать существующий минимальный CMake-проект или создать его
-самостоятельно, если старый проект не найдётся.
+**Этап 0: открыть GitHub-копию MiniGuard в Ubuntu через Windows VS Code, проверить
+remote C++ extensions и закончить toolchain smoke test.** После этого собрать
+существующий минимальный CMake-проект или создать его самостоятельно, если старый
+проект не найдётся.
 
 ## Этап 0 — окружение и workflow
 
@@ -37,14 +38,15 @@ GitHub.** После этого собрать существующий мини
 ### Windows
 
 - [ ] Проверено подключение `ssh` из PowerShell в Ubuntu.
-- [ ] Установлено расширение VS Code Remote SSH.
-- [ ] VS Code подключён к Ubuntu.
+- [x] Установлено расширение VS Code Remote SSH.
+- [x] VS Code подключён к Ubuntu.
 - [ ] В VS Code открыт `/home/bortongo/Projects/MiniGuard`.
 - [ ] Проверены C/C++ и CMake Tools в удалённой среде.
 
 ### Git и минимальная сборка
 
-- [ ] Владельцем создан публичный GitHub-репозиторий `MiniGuard`.
+- [x] Владельцем создан публичный GitHub-репозиторий `MiniGuard`.
+- [x] Идея проекта и учебный контракт сохранены в `PROJECT_CONTEXT.md`.
 - [ ] Репозиторий клонирован в `/home/bortongo/Projects/MiniGuard` в Ubuntu.
 - [ ] Настроены Git username/email в Ubuntu.
 - [ ] Создан минимальный C++20-проект через CMake.
@@ -177,3 +179,7 @@ GitHub.** После этого собрать существующий мини
 - CLion Gateway отклонён: Linux-backend не скачивается из-за HTTP 451 export
   control restriction; обход ограничений не используется.
 - Создана документационная основа и roadmap для продолжения на двух компьютерах.
+- Создан публичный GitHub-репозиторий `BortonGo/MiniGuard`.
+- VS Code на Windows подключён к Ubuntu VM через Remote SSH.
+- Исходный промт преобразован в постоянный `PROJECT_CONTEXT.md`; добавлен
+  `AGENTS.md` для будущих coding-agent сессий.
