@@ -1,0 +1,25 @@
+# CMake and IDE output
+/build/
+/cmake-build-*/
+/out/
+/compile_commands.json
+/.cache/
+/.idea/
+
+# C/C++ build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Linux kernel module artifacts
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+Module.symvers
+modules.order
+
+# OS files
+.DS_Store
