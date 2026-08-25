@@ -6,14 +6,16 @@
 - `[ ]` — ещё не выполнено;
 - после каждой рабочей сессии обновляется блок **Журнал прогресса**.
 
-Последнее обновление: **2026-08-23**.
+Последнее обновление: **2026-08-26**.
 
 ## Текущий фокус
 
-**Этап 0: открыть GitHub-копию MiniGuard в Ubuntu через Windows VS Code, проверить
-remote C++ extensions и закончить toolchain smoke test.** После этого собрать
-существующий минимальный CMake-проект или создать его самостоятельно, если старый
-проект не найдётся.
+**Переход от Linux fundamentals к этапу 2 (File Monitor): проверить в Ubuntu уже
+написанные программы и разобрать `fanotify_init()`.** В начале следующей сессии
+нужно выполнить `git pull --ff-only`, убедиться в чистом `git status`, собрать оба
+target с GCC через Ninja и запустить существующий `miniguard-monitor` без `sudo`.
+До проверки результата `fanotify_init()` и понимания его флагов не добавлять
+`fanotify_mark()` и event loop.
 
 ## Этап 0 — окружение и workflow
 
@@ -49,7 +51,7 @@ remote C++ extensions и закончить toolchain smoke test.** После �
 - [x] Идея проекта и учебный контракт сохранены в `PROJECT_CONTEXT.md`.
 - [ ] Репозиторий клонирован в `/home/bortongo/Projects/MiniGuard` в Ubuntu.
 - [ ] Настроены Git username/email в Ubuntu.
-- [ ] Создан минимальный C++20-проект через CMake.
+- [x] Создан минимальный C++20-проект через CMake.
 - [ ] Debug-сборка выполнена с GCC через Ninja.
 - [ ] Debug-сборка выполнена с Clang через Ninja.
 - [ ] Программа запущена под GDB.
@@ -66,23 +68,37 @@ remote C++ extensions и закончить toolchain smoke test.** После �
 
 ## Этап 1 — Linux fundamentals
 
-- [ ] Process, PID, UID/GID.
-- [ ] File descriptor и таблица открытых файлов процесса.
-- [ ] Syscall, переход userspace → kernel space, errno.
-- [ ] `/proc`, `/sys` и virtual filesystem.
-- [ ] inode, permissions и signals.
-- [ ] Упражнение с `open/read/close`.
-- [ ] `getpid()` и исследование `/proc/<pid>`.
-- [ ] Сравнение POSIX I/O и `std::ifstream`.
-- [ ] Разбор syscalls программы через strace.
+- [x] В программе реализован вывод PID, real/effective UID и GID.
+- [ ] Проверено понимание process, PID, UID/GID и различия real/effective IDs.
+- [x] Пройден ручной lifecycle file descriptor; затем добавлен простой RAII
+  wrapper с запрещённым копированием.
+- [ ] Разобраны таблица file descriptors процесса, open file description и
+  совместное владение ресурсом.
+- [x] Реализовано упражнение с `open/read/close`, обработкой EOF, `EINTR` и
+  сохранением `errno`.
+- [ ] Разобран переход userspace → libc wrapper → syscall → kernel → VFS.
+- [x] Через `fstat()` выводятся тип файла, inode, размер, UID/GID владельца и
+  permissions.
+- [ ] Разобраны `/proc`, `/sys`, virtual filesystem и signals.
+- [ ] Исследован `/proc/<pid>` для процесса `miniguard`.
+- [ ] Выполнено сравнение POSIX I/O и `std::ifstream`.
+- [ ] Выполнен и разобран запуск программы через strace.
 
 ## Этап 2 — File Monitor
 
-- [ ] Наблюдение событий через fanotify без блокировки.
-- [ ] `fanotify_init`, `fanotify_mark`, event queue.
-- [ ] Получение PID/UID/path события.
-- [ ] File descriptors, blocking/non-blocking I/O, VFS и mount points.
-- [ ] Проверка поведения на обычной Linux filesystem.
+- [x] Добавлен отдельный executable `miniguard-monitor`.
+- [x] Реализован первый вызов `fanotify_init()` с `FAN_CLASS_NOTIF`,
+  `FAN_CLOEXEC` и RAII-владением queue fd.
+- [ ] Проверены сборка и результат `fanotify_init()` в Ubuntu без `sudo`; разобраны
+  возможные `EPERM`/`EINVAL` и ограничения конкретной версии ядра.
+- [ ] Разобраны два разных close-on-exec флага: для fanotify fd и event fd.
+- [ ] Добавлен `fanotify_mark()` только для отдельного безопасного тестового
+  каталога.
+- [ ] Реализовано наблюдение событий без permission-блокировки.
+- [ ] Реализованы чтение и корректный разбор всех записей event queue.
+- [ ] Получены PID/UID/path события; event file descriptors корректно закрываются.
+- [ ] Разобраны blocking/non-blocking I/O, VFS, inode marks и mount points.
+- [ ] Проверено поведение на обычной Linux filesystem.
 
 ## Этап 3 — Execution monitoring
 
@@ -169,6 +185,27 @@ remote C++ extensions и закончить toolchain smoke test.** После �
 - [ ] Каждый логический шаг оформляется отдельным commit.
 
 ## Журнал прогресса
+
+### 2026-08-26
+
+- Добавлен отдельный `miniguard-monitor`.
+- Написан минимальный вызов `fanotify_init()` в notification-режиме; полученный
+  file descriptor передаётся существующему RAII wrapper.
+- В CMake добавлен второй executable target.
+- Состояние `main` синхронизировано с `origin/main` на коммите `077eff1`.
+- Roadmap приведён в соответствие с кодом; runtime-проверки намеренно не отмечены
+  выполненными без повторной проверки в Ubuntu.
+
+### 2026-08-25
+
+- Создан минимальный C++20/CMake target `miniguard`.
+- Реализовано POSIX-чтение файла через `open()`/`read()`/`close()` с обработкой
+  ошибок и `EINTR`.
+- Ручное закрытие file descriptor заменено небольшим RAII wrapper.
+- Добавлен вывод метаданных через `fstat()`: тип, inode, размер, владелец и
+  permissions; неподдерживаемые типы файла отклоняются до чтения.
+- Добавлен вывод PID, real/effective UID и GID процесса.
+- Изменения разделены на четыре небольших тематических коммита.
 
 ### 2026-08-23
 
