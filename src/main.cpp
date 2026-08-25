@@ -14,6 +14,18 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    const pid_t pid = ::getpid();
+
+    const uid_t real_uid = ::getuid();
+    const uid_t effective_uid = ::geteuid();
+
+    const gid_t real_gid = ::getgid();
+    const gid_t effective_gid = ::getegid();
+
+    std::cout << "Process PID: " << pid << '\n';
+    std::cout << "Real UID/GID: " << real_uid << '/' << real_gid << '\n';
+    std::cout << "Effective UID/GID: " << effective_uid << '/' << effective_gid << '\n';
+
     const int raw_fd = ::open(argv[1], O_RDONLY | O_CLOEXEC);
 
     if (raw_fd == -1) {
@@ -46,6 +58,11 @@ int main(int argc, char* argv[]) {
     std::cout << "Owner UID: " << metadata.st_uid << '\n';
     std::cout << "Owner GID: " << metadata.st_gid << '\n';
     std::cout << "Permissions: " << std::oct << (metadata.st_mode & 07777) << std::dec << '\n';
+
+    if (!S_ISREG(metadata.st_mode)) {
+        std::cerr << "Unsupported file type: " << file_type << '\n';
+        return 1;
+    }
 
     char buffer[4096];
     std::uint64_t total_bytes = 0;
