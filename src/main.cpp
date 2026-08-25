@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "file_descriptor.hpp"
 
@@ -22,6 +23,29 @@ int main(int argc, char* argv[]) {
     }
 
     FileDescriptor file{raw_fd};
+
+    struct stat metadata {};
+
+    if (::fstat(file.get(), &metadata) == -1) {
+        const int error = errno;
+        std::cout << "Cannot read file metadata: " << std::strerror(error) << '\n';
+        return 1;
+    }
+
+    const char* file_type = "other";
+
+    if (S_ISREG(metadata.st_mode)) {
+        file_type = "regular file";
+    } else if (S_ISDIR(metadata.st_mode)) {
+        file_type = "directory";
+    }
+
+    std::cout << "Type: " << file_type << '\n';
+    std::cout << "Inode: " << metadata.st_ino << '\n';
+    std::cout << "Declared size: " << metadata.st_size << " bytes\n";
+    std::cout << "Owner UID: " << metadata.st_uid << '\n';
+    std::cout << "Owner GID: " << metadata.st_gid << '\n';
+    std::cout << "Permissions: " << std::oct << (metadata.st_mode & 07777) << std::dec << '\n';
 
     char buffer[4096];
     std::uint64_t total_bytes = 0;
