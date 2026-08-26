@@ -10,11 +10,12 @@
 
 ## Текущий фокус
 
-**Этап 2 (File Monitor): перейти от обработки первого события к корректному
-разбору всех записей одного fanotify buffer.** Следующий шаг — изучить и применить
-`FAN_EVENT_OK()` и `FAN_EVENT_NEXT()`, проверяя каждую metadata-запись и закрывая
-event fd каждой записи через RAII. Внешний постоянный event loop добавлять только
-после корректного разбора одного buffer.
+**Этап 2 (File Monitor): сделать ожидание событий и завершения race-free.**
+Текущая версия уже обрабатывает все metadata-записи каждого buffer, продолжает
+blocking `read()` в постоянном цикле и штатно выходит по `SIGINT`. Следующий шаг —
+разобрать `poll()` и `signalfd`, чтобы устранить узкое окно между проверкой
+`stop_requested` и входом в `read()`. Новые типы filesystem-событий пока не
+добавлять.
 
 ## Этап 0 — окружение и workflow
 
@@ -48,13 +49,15 @@ event fd каждой записи через RAII. Внешний постоя�
 
 - [x] Владельцем создан публичный GitHub-репозиторий `MiniGuard`.
 - [x] Идея проекта и учебный контракт сохранены в `PROJECT_CONTEXT.md`.
-- [ ] Репозиторий клонирован в `/home/bortongo/Projects/MiniGuard` в Ubuntu.
-- [ ] Настроены Git username/email в Ubuntu.
+- [x] Репозиторий клонирован в `/home/bortongo/Projects/MiniGuard` в Ubuntu.
+- [x] Настроены Git username/email в Ubuntu; коммиты создаются и отправляются из
+  рабочей копии.
 - [x] Создан минимальный C++20-проект через CMake.
 - [x] Debug-сборка выполнена с GCC через Ninja (подтверждено владельцем).
 - [ ] Debug-сборка выполнена с Clang через Ninja.
 - [ ] Программа запущена под GDB.
-- [ ] Программа запущена через strace; разобраны несколько syscall.
+- [x] Программа запущена через strace; разобраны `fanotify_init`,
+  `fanotify_mark`, `read`, `readlink` и `close`.
 - [ ] Проверен одинаковый workflow из VS Code на Mac и Windows.
 
 ### Что нужно понимать после этапа 0
@@ -79,9 +82,11 @@ event fd каждой записи через RAII. Внешний постоя�
 - [x] Через `fstat()` выводятся тип файла, inode, размер, UID/GID владельца и
   permissions.
 - [ ] Разобраны `/proc`, `/sys`, virtual filesystem и signals.
+- [x] На практике использованы `/proc/self/fd`, `readlink()`, `sigaction()`,
+  `SIGINT`, `EINTR` и простой signal-safe stop flag.
 - [ ] Исследован `/proc/<pid>` для процесса `miniguard`.
 - [ ] Выполнено сравнение POSIX I/O и `std::ifstream`.
-- [ ] Выполнен и разобран запуск программы через strace.
+- [x] Выполнен и разобран запуск `miniguard-monitor` через strace.
 
 ## Этап 2 — File Monitor
 
@@ -98,11 +103,19 @@ event fd каждой записи через RAII. Внешний постоя�
 - [x] Для первого события проверена версия metadata, обработан `FAN_Q_OVERFLOW`,
   выведены PID, event fd, mask и путь через `/proc/self/fd`.
 - [x] Event fd первого события передан `FileDescriptor` и закрывается через RAII.
-- [ ] Реализованы чтение и корректный разбор всех записей event queue.
-- [ ] Для всех событий получены PID/UID/path; все event file descriptors корректно
-  закрываются.
+- [x] Все metadata-записи каждого прочитанного buffer обходятся через
+  `FAN_EVENT_OK()`/`FAN_EVENT_NEXT()`; проверено получение двух событий одним
+  `read()`.
+- [x] Реализован постоянный blocking event loop; все корректные `FAN_OPEN` event
+  fd закрываются через RAII.
+- [x] Добавлено базовое штатное завершение по `SIGINT`: handler устанавливает
+  signal-safe flag, `read()` прерывается через `EINTR`, цикл завершается.
+- [ ] Устранено окно между проверкой stop flag и блокирующим `read()` через
+  `poll()`/`signalfd` или эквивалентный race-free механизм.
+- [ ] Для событий получен UID; разобрано поведение событий без event fd.
 - [ ] Разобраны blocking/non-blocking I/O, VFS, inode marks и mount points.
-- [ ] Проверено поведение на обычной Linux filesystem.
+- [x] Проверено поведение `FAN_OPEN` на тестовом каталоге обычной Ubuntu
+  filesystem.
 
 ## Этап 3 — Execution monitoring
 
@@ -208,7 +221,16 @@ event fd каждой записи через RAII. Внешний постоя�
   `/proc/self/fd` и `readlink()`.
 - Владение event fd передано `FileDescriptor`; проверены успешная сборка и
   получение `FAN_OPEN` для тестового файла.
-- Состояние `main` синхронизировано с `origin/main` на коммите `160103b`.
+- Добавлен обход всех metadata-записей одного buffer через `FAN_EVENT_OK()` и
+  `FAN_EVENT_NEXT()`; одним `read()` подтверждено получение двух записей общим
+  размером 48 байт.
+- Добавлен постоянный blocking event loop, который обрабатывает последовательные
+  открытия файлов и возвращается к ожиданию следующего buffer.
+- Добавлен обработчик `SIGINT` через `sigaction()` и signal-safe stop flag;
+  подтвержден штатный выход с сообщением `Stopping miniguard-monitor`.
+- Через strace прослежены создание group и mark, блокирующий `read()`, сигнал,
+  разрешение пути через `readlink()` и закрытие event/group file descriptors.
+- Состояние `main` синхронизировано с `origin/main` на коммите `ff458bd`.
 - Roadmap приведён в соответствие с кодом и подтверждёнными владельцем
   runtime-проверками; остальные пункты оставлены открытыми до проверки.
 
