@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string>
 #include <signal.h>
+#include <poll.h>
 
 #include "file_descriptor.hpp"
 
@@ -71,8 +72,37 @@ int main(int argc, char *argv[])
 
     alignas(struct fanotify_event_metadata) char buffer[4096];
 
+    struct pollfd monitored_fd{};
+    monitored_fd.fd = fanotify_fd.get();
+    monitored_fd.events = POLLIN;
+
     while (stop_requested == 0)
     {
+        const int poll_result = ::poll(&monitored_fd, 1, -1);
+
+        if (poll_result == -1)
+        {
+            const int error = errno;
+            if (error == EINTR)
+            {
+                continue;
+            }
+
+            std::cerr << "Cannot poll fanotify queue: " << std::strerror(error) << '\n';
+            return 1;
+        }
+
+        if ((monitored_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0)
+        {
+            std::cerr << "Fanotify descriptor polling failed\n";
+            return 1;
+        }
+
+        if ((monitored_fd.revents & POLLIN) == 0)
+        {
+            continue;
+        }
+
         const ssize_t received_bytes = ::read(fanotify_fd.get(), buffer, sizeof(buffer));
 
         if (received_bytes == -1)
