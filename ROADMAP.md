@@ -10,12 +10,13 @@
 
 ## Текущий фокус
 
-**Этап 2 (File Monitor): добавить UID инициатора события.**
+**Этап 2 (File Monitor): разобрать события без event fd.**
 Race-free event loop уже ждёт fanotify и `SIGINT` одним `poll()`:
 заблокированный сигнал получается через `signalfd`, а завершение больше не
-зависит от `EINTR` и stop flag. Следующий шаг — разобрать различие между UID
-владельца файла и UID процесса-инициатора, затем получить UID инициатора
-для `FAN_OPEN`. Новые типы filesystem-событий пока не добавлять.
+зависит от `EINTR` и stop flag. Для `FAN_OPEN` по PID из `/proc/<pid>/status`
+выводится filesystem UID процесса-иницатора. Следующий шаг — понять,
+когда fanotify event не содержит пригодный fd, и определить нефатальное
+поведение монитора. Новые типы filesystem-событий пока не добавлять.
 
 ## Этап 0 — окружение и workflow
 
@@ -59,14 +60,6 @@ Race-free event loop уже ждёт fanotify и `SIGINT` одним `poll()`:
 - [x] Программа запущена через strace; разобраны `fanotify_init`,
   `fanotify_mark`, `read`, `readlink` и `close`.
 - [ ] Проверен одинаковый workflow из VS Code на Mac и Windows.
-
-### Что нужно понимать после этапа 0
-
-- [ ] Compiler, linker и build system — разные части сборки.
-- [ ] CMake генерирует build configuration, но сам не компилирует C++.
-- [ ] Ninja/Make исполняют граф команд сборки.
-- [ ] Debug и Release отличаются оптимизациями и отладочной информацией.
-- [ ] VS Code работает локально, а расширения, terminal и toolchain — в Ubuntu.
 
 ## Этап 1 — Linux fundamentals
 
@@ -112,7 +105,10 @@ Race-free event loop уже ждёт fanotify и `SIGINT` одним `poll()`:
   signal-safe flag, `read()` прерывается через `EINTR`, цикл завершается.
 - [x] Устранено окно между проверкой stop flag и блокирующим `read()` через
   `poll()`/`signalfd` или эквивалентный race-free механизм.
-- [ ] Для событий получен UID; разобрано поведение событий без event fd.
+- [x] Для `FAN_OPEN` получен filesystem UID процесса-инициатора через
+  `/proc/<pid>/status`; процесс, успевший завершиться, не считается фатальной
+  ошибкой.
+- [ ] Разобрано поведение событий без event fd.
 - [ ] Разобраны blocking/non-blocking I/O, VFS, inode marks и mount points.
 - [x] Проверено поведение `FAN_OPEN` на тестовом каталоге обычной Ubuntu
   filesystem.
@@ -213,6 +209,10 @@ Race-free event loop уже ждёт fanotify и `SIGINT` одним `poll()`:
   штатный выход по `Ctrl+C` с сообщением `Stopping miniguard-monitor`.
 - На runtime подтверждено раздельное владение fd: fanotify queue — `3`, signal fd —
   `4`, временный event fd — `5`.
+- Добавлено чтение filesystem UID процесса-инициатора из строки `Uid:` в
+  `/proc/<pid>/status`; отсутствующий процесс представляется как `std::nullopt`.
+- В Ubuntu подтверждены filesystem UID `1000` для обычного процесса и UID `0`
+  для процесса, запущенного через `sudo`.
 
 ### 2026-08-26
 
