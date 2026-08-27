@@ -3,22 +3,13 @@
 #include <fcntl.h>
 #include <iostream>
 #include <sys/fanotify.h>
+#include <sys/signalfd.h>
 #include <unistd.h>
 #include <string>
 #include <signal.h>
 #include <poll.h>
 
 #include "file_descriptor.hpp"
-
-namespace
-{
-    volatile sig_atomic_t stop_requested = 0;
-
-    void handle_sigint(int)
-    {
-        stop_requested = 1;
-    }
-}
 
 int main(int argc, char *argv[])
 {
@@ -57,48 +48,120 @@ int main(int argc, char *argv[])
 
     std::cout << "Directory marked: " << argv[1] << '\n';
 
-    struct sigaction action{};
-    action.sa_handler = handle_sigint;
-    action.sa_flags = 0;
+    sigset_t signal_mask{};
 
-    ::sigemptyset(&action.sa_mask);
-
-    if (::sigaction(SIGINT, &action, nullptr) == -1)
+    if (::sigemptyset(&signal_mask) == -1)
     {
         const int error = errno;
-        std::cerr << "Cannot install SIGINT handler: " << std::strerror(error) << '\n';
+        std::cerr << "Cannot initialize signal mask: " << std::strerror(error) << '\n';
         return 1;
     }
 
+    if (::sigaddset(&signal_mask, SIGINT) == -1)
+    {
+        const int error = errno;
+        std::cerr << "Cannot add SIGINT to signal mask: " << std::strerror(error) << '\n';
+        return 1;
+    }
+
+    if (::sigprocmask(SIG_BLOCK, &signal_mask, nullptr) == -1)
+    {
+        const int error = errno;
+        std::cerr << "Cannot block SIGINT: " << std::strerror(error) << '\n';
+        return 1;
+    }
+
+    const int raw_signal_fd = ::signalfd(-1, &signal_mask, SFD_CLOEXEC);
+
+    if (raw_signal_fd == -1)
+    {
+        const int error = errno;
+        std::cerr << "Cannot initialize signal: " << std::strerror(error) << '\n';
+        return 1;
+    }
+
+    FileDescriptor signal_fd{raw_signal_fd};
+    std::cout << "Signal fd: " << signal_fd.get() << '\n';
+
     alignas(struct fanotify_event_metadata) char buffer[4096];
 
-    struct pollfd monitored_fd{};
-    monitored_fd.fd = fanotify_fd.get();
-    monitored_fd.events = POLLIN;
+    struct pollfd monitored_fds[2]{};
+    monitored_fds[0].fd = fanotify_fd.get();
+    monitored_fds[0].events = POLLIN;
 
-    while (stop_requested == 0)
+    monitored_fds[1].fd = signal_fd.get();
+    monitored_fds[1].events = POLLIN;
+
+    bool running = true;
+
+    while (running)
     {
-        const int poll_result = ::poll(&monitored_fd, 1, -1);
+        int poll_result = -1;
 
-        if (poll_result == -1)
+        while (true)
         {
+            poll_result = ::poll(monitored_fds, 2, -1);
+
+            if (poll_result >= 0)
+            {
+                break;
+            }
+
             const int error = errno;
+
             if (error == EINTR)
             {
                 continue;
             }
 
-            std::cerr << "Cannot poll fanotify queue: " << std::strerror(error) << '\n';
+            std::cerr << "Cannot wait for events: " << std::strerror(error) << '\n';
             return 1;
         }
 
-        if ((monitored_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0)
+        constexpr short poll_errors = POLLERR | POLLHUP | POLLNVAL;
+
+        if ((monitored_fds[0].revents & poll_errors) != 0)
         {
-            std::cerr << "Fanotify descriptor polling failed\n";
+            std::cerr << "Fanotify descriptor reported poll error\n";
             return 1;
         }
 
-        if ((monitored_fd.revents & POLLIN) == 0)
+        if ((monitored_fds[1].revents & poll_errors) != 0)
+        {
+            std::cerr << "Signal descriptor reported poll error\n";
+            return 1;
+        }
+
+        if ((monitored_fds[1].revents & POLLIN) != 0)
+        {
+            struct signalfd_siginfo signal_info{};
+
+            const ssize_t signal_bytes =
+                ::read(signal_fd.get(), &signal_info, sizeof(signal_info));
+
+            if (signal_bytes == -1)
+            {
+                const int error = errno;
+                std::cerr << "Cannot read signal information: "
+                          << std::strerror(error) << '\n';
+                return 1;
+            }
+
+            if (signal_bytes !=
+                static_cast<ssize_t>(sizeof(signal_info)))
+            {
+                std::cerr << "Incomplete signal information\n";
+                return 1;
+            }
+
+            if (signal_info.ssi_signo == SIGINT)
+            {
+                running = false;
+                continue;
+            }
+        }
+
+        if ((monitored_fds[0].revents & POLLIN) == 0)
         {
             continue;
         }
