@@ -225,29 +225,10 @@ int main(int argc, char *argv[]) {
 
             if ((event->mask & FAN_Q_OVERFLOW) != 0) {
                 std::cerr << "Fanotify queue overflow\n";
-            } else if (event->fd < 0) {
-                std::cerr << "Fanotify event has no file descriptor\n";
             } else {
-                FileDescriptor event_file{event->fd};
-                const std::string fd_link =
-                    "/proc/self/fd/" + std::to_string(event_file.get());
-                char path_buffer[4096];
-                const ssize_t path_length = ::readlink(
-                    fd_link.c_str(), path_buffer, sizeof(path_buffer) - 1);
-
-                if (path_length == -1) {
-                    const int error = errno;
-                    std::cerr
-                        << "Cannot resolve event path: " << std::strerror(error)
-                        << '\n';
-                } else if (path_length ==
-                           static_cast<ssize_t>(sizeof(path_buffer) - 1)) {
-                    std::cerr << "Event path is too long\n";
-                } else {
-                    path_buffer[path_length] = '\0';
-                    std::cout << "Event path: " << path_buffer << '\n';
-                }
-
+                std::cout << "Event PID: " << event->pid << '\n';
+                std::cout << "Event mask: 0x" << std::hex << event->mask
+                          << std::dec << '\n';
                 const auto process_uid =
                     read_process_filesystem_uid(event->pid);
                 if (process_uid) {
@@ -257,10 +238,33 @@ int main(int argc, char *argv[]) {
                     std::cout << "Process filesystem UID: unavailable\n";
                 }
 
-                std::cout << "Event PID: " << event->pid << '\n';
-                std::cout << "Event fd: " << event_file.get() << '\n';
-                std::cout << "Event mask: 0x" << std::hex << event->mask
-                          << std::dec << '\n';
+                if (event->fd == FAN_NOFD) {
+                    std::cerr << "Path unavailable: FAN_NOFD\n";
+                } else if (event->fd < 0) {
+                    std::cerr << "Unexpected negative event fd: "
+                        << event->fd << '\n';
+                } else {
+                    FileDescriptor event_file{event->fd};
+                    const std::string fd_link =
+                        "/proc/self/fd/" + std::to_string(event_file.get());
+                    char path_buffer[4096];
+                    const ssize_t path_length = ::readlink(
+                        fd_link.c_str(), path_buffer, sizeof(path_buffer) - 1);
+
+                    if (path_length == -1) {
+                        const int error = errno;
+                        std::cerr
+                            << "Cannot resolve event path: " << std::strerror(error)
+                            << '\n';
+                    } else if (path_length ==
+                           static_cast<ssize_t>(sizeof(path_buffer) - 1)) {
+                        std::cerr << "Event path is too long\n";
+                    } else {
+                        path_buffer[path_length] = '\0';
+                        std::cout << "Event path: " << path_buffer << '\n';
+                    }
+                    std::cout << "Event fd: " << event_file.get() << '\n';
+                }
             }
 
             event = FAN_EVENT_NEXT(event, remaining_bytes);
